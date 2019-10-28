@@ -513,7 +513,6 @@ class RewriterApp(object):
 
     def _not_found_response(self, environ, url):
         resp = self.not_found_view.render_to_string(environ, url=url)
-
         return WbResponse.text_response(resp, status='404 Not Found', content_type='text/html')
 
     def _error_response(self, environ, msg='', details='', status='404 Not Found'):
@@ -693,7 +692,53 @@ class RewriterApp(object):
             return self.handle_query(environ, wb_url, kwargs, full_prefix)
 
         if self.is_framed_replay(wb_url):
+            # status_code hack for top frames correctly returning status codes
+            # we still need to get the CDX to check if it's a 404 or not
+            urlkey = canonicalize(wb_url.url)
+
+            host_prefix = self.get_host_prefix(environ)
+            rel_prefix = self.get_rel_prefix(environ)
+            full_prefix = host_prefix + rel_prefix
+            environ['pywb.host_prefix'] = host_prefix
+            pywb_static_prefix = host_prefix + environ.get('pywb.app_prefix', '') + environ.get(
+                'pywb.static_prefix', '/static/')
+
+            if self.use_js_obj_proxy:
+                content_rw = self.js_proxy_rw
+            else:
+                content_rw = self.default_rw
+
+            inputreq = RewriteInputRequest(environ, urlkey, wb_url.url, content_rw)
+            inputreq.include_method_query(wb_url.url)
+
+            range_start, range_end, skip_record = self._check_range(inputreq, wb_url)
+
+
+            urlrewriter = UrlRewriter(wb_url,
+                                      prefix=full_prefix,
+                                      full_prefix=full_prefix,
+                                      rel_prefix=rel_prefix,
+                                      pywb_static_prefix=pywb_static_prefix)
+
+            if self.cookie_tracker:
+                cookie_key = self.get_cookie_key(kwargs)
+                if cookie_key:
+                    res = self.cookie_tracker.get_cookie_headers(wb_url.url,
+                                                                 urlrewriter,
+                                                                 cookie_key,
+                                                                 environ.get('HTTP_COOKIE', ''))
+                    inputreq.extra_cookie, setcookie_headers = res
+
+            r = self._do_req(inputreq, wb_url, kwargs, skip_record)
+
             extra_params = self.get_top_frame_params(wb_url, kwargs)
+
+            if not extra_params:
+                extra_params = {}
+
+            # pass the status through as an extra param for the render_template to use
+            extra_params['status'] = r.status_code
+
             return self.frame_insert_view.get_top_frame(wb_url,
                                                         full_prefix,
                                                         host_prefix,

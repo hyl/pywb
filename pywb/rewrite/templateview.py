@@ -228,8 +228,11 @@ class BaseInsertView(object):
         kwargs['env'] = env
         kwargs['static_prefix'] = env.get('pywb.host_prefix', '') + env.get('pywb.app_prefix', '') + '/static'
 
-
-        return template.render(**kwargs)
+        # status_code hack for top frames correctly returning status codes
+        if kwargs.get('status'):
+            return template.render(**kwargs), kwargs.get('status')
+        else:
+            return template.render(**kwargs)
 
 
 # ============================================================================

@@ -1,6 +1,7 @@
 from warcio.statusandheaders import StatusAndHeaders
 
 from pywb.utils.io import no_except_close
+from werkzeug.http import HTTP_STATUS_CODES
 
 try:
     import ujson as json
@@ -91,6 +92,14 @@ class WbResponse(object):
         :return: WbResponse text response
         :rtype: WbResponse
         """
+
+        # status_code hack for top frames correctly returning status codes
+        if type(text) == tuple:
+            if text[1]:
+                status = str(text[1]) + ' ' + HTTP_STATUS_CODES.get(text[1], 'Unknown Error')
+
+            text = text[0]
+
         encoded_text = text.encode('utf-8')
         status_headers = StatusAndHeaders(status,
                                           [('Content-Type', content_type),
