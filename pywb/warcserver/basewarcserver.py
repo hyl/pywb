@@ -7,6 +7,7 @@ from werkzeug.exceptions import HTTPException
 import requests
 import traceback
 import json
+import itertools
 
 import six
 
@@ -64,6 +65,13 @@ class BaseWarcServer(object):
         else:
             return {}
 
+    def peek(self, iterable):
+        try:
+            first = next(iterable)
+        except StopIteration:
+            return None
+        return first, itertools.chain([first], iterable)
+
     def __call__(self, environ, start_response):
         urls = self.url_map.bind_to_environ(environ)
         try:
@@ -87,7 +95,15 @@ class BaseWarcServer(object):
                     errs['last_exc'] = str(errs['last_exc'])
                 out_headers['ResErrors'] = json.dumps(errs)
 
-            start_response('200 OK', list(out_headers.items()))
+            # peek into the generator to see if it has value
+            has_values = self.peek(res)
+
+            if has_values:
+                res_header = '200 OK'
+            else:
+                res_header = '404 Not Found'
+
+            start_response(res_header, list(out_headers.items()))
             return res
 
         except Exception as e:
